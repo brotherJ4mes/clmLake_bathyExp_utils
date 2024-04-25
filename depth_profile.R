@@ -10,6 +10,8 @@ meta    = read.csv('csv/all_metadata_adjusted.csv')
 obs     = read.csv('csv/all_data_hourly.csv')[-8761,]
 column_temps_dir = 'csv/Column_temps'
 
+
+outfile <- '../65e0d491f698c7b0fdfee2b7/figures/depth_profile.pdf'
 # many locations have very low temperatures (around -20), which throws off the color scale
 # change all values below lower_lim to equal lower_lim?
 
@@ -19,11 +21,28 @@ dts <- seq.POSIXt(as.POSIXct('2019-01-01 00:00'), by='hour', length=8760)
 
 mypal = function(n) hcl.colors(n, "YlOrRd", rev = TRUE)
 
+locs <- c('RED01','UPK03','GSL05','MAR02')
+longs <- c('Lower Red', 'Upper Klamath', 'Great Salt', 'Marion')
+#          DC      SC      DNC     SNC
+# also see                         SAK01
+
+
+
+#x11(width=22, height=10)
+# plot 4 select locs for main graphic
+A <- matrix(c(1,3,2,3), 2,2) # basic template for two heatmaps with single cbar below
+pdf(outfile, width=22, h=10)
+B <- cbind(rbind(A,A+3),rbind(A+6,A+9))
+layout(B, heights=c(.75,.25,.75,.25))
+par(cex.axis=1.5, cex.lab=1.5)
+par(oma=c(0,3,4,2))
 
 for (loc in locs){
 
+	idx <- which(loc==locs)
+	print(idx)
 
-	# read 
+	# 0 READ 
 	ctl = as.matrix(read.csv(sprintf('%s/%s/%s_00.csv', column_temps_dir, 'ctl', loc))[,-1])
 	z_ctl = z[sprintf('%s_00',loc),,'ctl']
 	glo = as.matrix(read.csv(sprintf('%s/%s/%s_00.csv', column_temps_dir, 'bi0m', loc))[,-1])
@@ -41,40 +60,44 @@ for (loc in locs){
 	cmap <- mypal(nlevs-1)
 	
 
-	print(loc)
 
-	# plot
-	png(sprintf('figs/%s.png',loc), width=1500, h=600)
-	#png('test.png', width=1500, h=600)
-	#pdf('test.pdf', width=22, h=10, pointsize=22)
-	#pdf('test.pdf', width=12, h=6)
-	layout(matrix(c(1,3,2,3), 2,2), heights=c(.8,.2)); #png
-	#layout(matrix(c(1,3,2,3), 2,2), heights=c(.85,.15)); #pdf
-	par(mar=c(0,0.5,0,0.5), oma=c(0,6,4,2), cex.axis=1.75, cex.lab=1.75)
-
-	frame(); plot.window(xlim=range(dts), y=c(zmax,0), xaxs='i', yaxs='i')
+# 1 LEFT HEAT PANEL
+	par(mar=c(0,2,3,.5))
+	frame(); 
+	plot.window(xlim=range(dts), y=c(zmax,0), xaxs='i', yaxs='i')
 	.filled.contour(x=dts, y=z_ctl, z=ctl, levels=levs, col=cmap); box()
 	axis.POSIXct(1,at=seq.POSIXt(dts[1], rev(dts)[1], by='month'), lab=substr(month.abb,1,1))
-	axis(2); axis(4, lab=NA, tcl=-.25); 
-	mtext('depth (m)', 2, line=4, cex=1.75); mtext('flatbottom', 3, cex=1.75, line=.5)
 
-	frame(); plot.window(xlim=range(dts), y=c(zmax,0), xaxs='i', yaxs='i')
+	mtext(' FB', 3, cex=1.5, line=-2, adj=0)
+	if(idx %in% c(1,2)) axis(2); 
+	if(idx %in% c(3,4)) axis(4, lab=NA); 
+	#axis(4, lab=NA, tcl=-.25); 
+
+# 2 RIGHT HEAT PANEL
+	par(mar=c(0,.5,3,2))
+	frame(); 
+	plot.window(xlim=range(dts), y=c(zmax,0), xaxs='i', yaxs='i')
 	.filled.contour(x=dts, y=z_glo, z=glo, levels=levs, col=cmap); box()
 	axis.POSIXct(1,at=seq.POSIXt(dts[1], rev(dts)[1], by='month'), lab=substr(month.abb,1,1))
-	axis(2, lab=NA, tcl=-.25);	axis(4, lab=NA); mtext('GLOBathy', 3, cex=1.75, line=.5)
 
-	mtext(side=3, outer=T, loc, cex=2,line=2)
+	mtext(' GLOB', 3, cex=1.5, line=-2, adj=0)
+	#if(idx %in% c(1,3)) mtext('globathy', 3, cex=1.75, line=.5)
+	if(idx %in% c(1,2)) axis(2, lab=NA)
+	if(idx %in% c(3,4)) axis(4)
 
-	par(mar=c(2,40,5.5,40)) # png
-#	par(mar=c(1,30,5,30))  #pdf
+	#mtext(side=3, outer=T, loc, cex=2,line=2)
+	#mtext(side=3, outer=T, loc, cex=2,line=2)
+
+#3. ADD COLOR BAR
+	par(mar=c(3,25,4,25))  #pdf
 	plot.new()
 	plot.window(ylim=c(0,1), xlim=c(0,nlevs))
 	rect(0:(nlevs-2), 0, 1:(nlevs-1),1, col=cmap, border='white')
-	axis(1, at=(1:nlevs)[c(T,F,F)]-0.5, lab=levs[c(T,F,F)], lwd=0, line=-.5)
-	mtext('temperature (deg C)', 3, cex=1.75)
-
-
-	dev.off()
+	axis(1, at=(1:nlevs)[c(T,F,F,F)]-0.5, lab=levs[c(T,F,F,F)], lwd=0, line=-.5)
+	mtext('temperature (°C)', 3, cex=1)
+	mtext(longs[idx], side=3, line=29, cex=2)
 }
 
+mtext('depth (m)', 2, line=1, cex=1.75, outer=T);
+graphics.off()
 
