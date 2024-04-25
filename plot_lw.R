@@ -6,7 +6,7 @@ graphics.off()
 
 
 outdir <- '/home/kessler/work/jtti/65e0d491f698c7b0fdfee2b7/figures/'
-rng <- list(min=-25, max=50)
+rng <- list(min=-40, max=50)
 
 lkmeta <- read.table('txt/lake_ids.txt', head=T)
 
@@ -29,18 +29,29 @@ frac <- read.table('txt/frac_out_mq3.txt')
 obs[frac < min_frac] <- NA
 
 dts_obs <- as.Date(row.names(obs), format='%Y%m%d')
-ctl <- read.table('csv/ctl_T3D.csv', row.names=1)
-glo <- read.table('csv/bi0m_T3D.csv', row.names=1)
-glo2 <- read.table('csv/bi2m_T3D.csv', row.names=1)
-dts_mod <- as.Date(row.names(ctl))
-#glo2 <- read.table('bi2m_T3D.csv')
+row.names(obs) <- dts_obs
+ctl <- read.table('csv/ctl_T3D.csv', row.names=1, sep=',')
+glo <- read.table('csv/bi0m_T3D.csv', row.names=1, sep=',')
 
+
+dts_mod <- as.POSIXct(row.names(ctl), 'z')
+ymd <- format(dts_mod, '%y%m%d')
 
 # filter for wild values
 ctl <- filter_rng(ctl)
 glo <- filter_rng(glo)
-glo2 <- filter_rng(glo2)
 obs <- filter_rng(obs)
+
+# save hourly data for later
+ctl_all <- ctl
+glo_all <- glo
+
+ctl <- aggregate(ctl, by=list(ymd), mean, na.rm=T, finite=T)[,-1]
+glo <- aggregate(glo, by=list(ymd), mean, na.rm=T, finite=T)[,-1]
+dts_mod <- unique(as.Date(dts_mod))
+row.names(ctl) <- dts_mod
+row.names(glo) <- dts_mod
+
 
 
 # rename and re-order lakes
@@ -48,41 +59,46 @@ renamorder <- function(dat){
 	dat <- dat[,order(names(dat), decreasing=T)]
 	names(dat) <- str_to_title(gsub('_',' ',names(dat)))
 	names(dat)[names(dat)=='Mcconaugh'] <- 'McConaugh'
-	names(dat) <- gsub(' Lake','', names(dat))
+	names(dat) <- gsub(' Lake','', names(dat)
+	)
 	return(dat)
 }
 
 
 ctl <- renamorder(ctl)
 glo <- renamorder(glo)
-glo2 <- renamorder(glo2)
+#glo2 <- renamorder(glo2)
 obs <- renamorder(obs)
 lks <- names(ctl)
 max_diff <- abs(max(range(glo-ctl, na.rm=T)))
 
-
-
-dts_mod <- dts_mod[1:420]
-ctl <- ctl[1:420,]
-glo <- glo[1:420,]
+#dts_mod <- dts_mod[1:420]
+#ctl <- ctl[1:420,]
+#glo <- glo[1:420,]
 
 
 # temp diff plot
 if(T){
 	pdf(file=sprintf('%s/lakewide_tempdiff.pdf', outdir), w=20)
 	par(mar=c(4,9,4,2), cex.axis=1.25)
-	image.plot(x=dts_mod, y=1:ncol(ctl), z=as.matrix(glo-ctl), col=hcl.colors(100,'Blue-Red 3'), xaxt='n', yaxt='n', 
-			   main='Lake-wide Temperature Difference (GLOBathy - Flatbottom)', ylab=NA, xlab=NA, legend.lab='degrees C', zlim=c(-max_diff, max_diff))
+	image.plot(x=dts_mod, y=1:ncol(ctl), z=as.matrix(glo-ctl), col=hcl.colors(256,'blue-Red 3'), xaxt='n', yaxt='n', 
+			   main='Lake-wide Temperature Difference (GLOBathy - Flatbottom)', ylab=NA, xlab=NA, legend.lab='degrees C', zlim=c(-7,7))
 	axis(2, at=1:ncol(ctl), lab=names(ctl), las=2)
 	#axis.Date(side=1, x=dts_mod, at=seq(dts_mod[1], rev(dts_mod)[1], by='month', format='%b'), format='%b \'%y')
 	axis.Date(side=1, x=dts_mod, at=seq(dts_mod[1], rev(dts_mod)[1], by='month', format='%b'), format='%b')
+	dev.off()
 }
 
 
 # INTERSECT DATES for OBS and MODEL 
-ctl <-  ctl[!dts_mod < min(dts_obs),]
-glo <-  glo[!dts_mod < min(dts_obs),]
-glo2 <-  glo2[!dts_mod < min(dts_obs),]
+comdts <- format(as.Date(intersect(dts_mod, dts_obs)), '%Y-%m-%d')
+comdts <- comdts[comdts<'2019-12-20']  # ditch bad data post xmas (some ctl lakes blowup)
+
+
+ctl <- ctl[comdts,]
+glo <- glo[comdts,]
+obs <- obs[comdts,]
+dts <- as.Date(comdts)
 
 
 # loop to draw individual plots
@@ -91,15 +107,11 @@ if(F){
 	for (lk in rev(lks)){
 		if(all(is.na(obs[,lk]))) next
 		x11(w=14)
-		plot(dts_obs, obs[,lk], main=lk, pch=20, ylab='surface temp (deg C)', xlab=NA)
+		plot(dts, obs[,lk], main=lk, pch=20, ylab='surface temp (deg C)', xlab=NA)
 		lines(dts, ctl[,lk], col='blue', lwd=2)
 		lines(dts, glo[,lk], col='red', lwd=2)
 	}
 }
-
-dts_obs <- dts_obs[1:359]
-obs <- obs[1:359,]
-dts <- dts_obs
 
 
 # loop to panel plot
@@ -111,10 +123,10 @@ for (lk in rev(lks)){
 	if(all(is.na(obs[,lk]))) next
 		lkname <- gsub(' Lake','',lk)
 		lkname <- paste('  ',lkname, sep='')
-		plot(dts_obs, obs[,lk], pch=NA, ylab=NA, xlab=NA, xaxt='n', yaxt='n', ylim=c(-10,35))
+		plot(dts, obs[,lk], pch=NA, ylab=NA, xlab=NA, xaxt='n', yaxt='n', ylim=c(-10,35))
 		lines(dts, ctl[,lk], col=ctlcol, lwd=2)
 		lines(dts, glo[,lk], col=glocol, lwd=2)
-		points(dts_obs, obs[,lk], pch=5, cex=1, col='black', lwd=.75)
+		points(dts, obs[,lk], pch=5, cex=1, col='black', lwd=.75)
 		#points(dts_obs, obs[,lk], pch=18, cex=1, col='black')
 		mtext(side=3, adj=0, line=-2, text=lkname, cex=1.25)
 
@@ -134,24 +146,24 @@ legend('center', legend=c('Flatbottom', 'GLOBathy','Satellite Data'),
 
 # PART 2:  PLOT MONTHLY AVERAGES
 if(T){ # MANUAL SWITCH TO PLOT
-mons <- list(substr(rownames(obs), 5, 6))
-obs <- aggregate(obs, by=mons, mean, na.rm=T)[,-1]
-ctl <- aggregate(ctl, by=mons, mean, na.rm=T)[,-1]
-glo <- aggregate(glo, by=mons, mean, na.rm=T)[,-1]
-dts <- as.Date(sprintf('2019-%02i-01', 1:12))
+mons <- format(dts,'%b')
+obs_mon <- aggregate(obs, by=list(mons), mean, na.rm=T)[,-1]
+ctl_mon <- aggregate(ctl, by=list(mons), mean, na.rm=T)[,-1]
+glo_mon <- aggregate(glo, by=list(mons), mean, na.rm=T)[,-1]
+mons <- as.Date(sprintf('2019-%02i-01', 1:12)) 
 pdf(file=sprintf('%s/mon_validate.pdf', outdir), w=20, h=14)
 layout(matrix(1:20, 5,4)); par(mar=c(0,0,0,0), oma=c(3,5,3,3), cex.axis=1.5)
 for (lk in rev(lks)){
 	if(all(is.na(obs[,lk]))) next
-		plot(dts, obs[,lk], pch=NA, ylab=NA, xlab=NA, xaxt='n', yaxt='n', ylim=c(-25,35))
-		points(dts, obs[,lk], pch=15, cex=2.5, col='black')
-		points(dts, ctl[,lk], col=ctlcol, pch=19, cex=2)
-		points(dts, glo[,lk], col=glocol, pch=17, cex=2)
+		plot(mons, obs_mon[,lk], pch=NA, ylab=NA, xlab=NA, xaxt='n', yaxt='n', ylim=c(-25,35))
+		points(mons, obs_mon[,lk], pch=15, cex=2.5, col='black')
+		points(mons, ctl_mon[,lk], col=ctlcol, pch=19, cex=2)
+		points(mons, glo_mon[,lk], col=glocol, pch=17, cex=2)
 		mtext(side=3, adj=0, line=-2.5, text=sprintf(' %s', lk), cex=1.5)
 
 		par(new=T)
-		plot(dts, ctl[,lk]-obs[,lk], 'h', col=ctlcol, lwd=5, ylim=c(-10,40), lend=1, yaxt='n', xaxt='n')
-		lines(dts+5, glo[,lk]-obs[,lk], 'h', col=glocol, lwd=5, ylim=c(-10,40), lend=1)
+		plot(mons, ctl_mon[,lk]-obs_mon[,lk], 'h', col=ctlcol, lwd=5, ylim=c(-10,40), lend=1, yaxt='n', xaxt='n')
+		lines(mons+5, glo_mon[,lk]-obs_mon[,lk], 'h', col=glocol, lwd=5, ylim=c(-10,40), lend=1)
 		abline(h=0, lwd=1)
 
 		yi <- par('mfg')[1]
@@ -164,10 +176,10 @@ for (lk in rev(lks)){
 		if(xi==4) axis(4, at=seq(0,30,by=10), lab=NA)
 
 		# xaxes 
-		if(yi==1) axis.Date(3,at=dts, lab=NA)
-		if(yi==5 || lk=='nipigon') axis.Date(1,at=dts, lab=substr(month.abb,1,1), line=0, lwd=0)
+		if(yi==1) axis.Date(3,at=mons, lab=NA)
+		if(yi==5 || lk=='nipigon') axis.Date(1,at=mons, lab=substr(month.abb,1,1), line=0, lwd=0)
 	}
-plot.new()
+#plot.new()
 #legend('center', legend=c('Flatbottom', 'GLOBathy','Satellite Data'))
 legend('center', legend=c('Flatbottom', 'GLOBathy','Satellite Data'), col=c(ctlcol, glocol, 'black'), pch=c(19,17,15), cex=3)
 #legend('center', legend=c('Flatbottom', 'GLOBathy','Satellite Data'), col=c(ctlcol, glocol, 'black'), lty=NA, pch=c(19,17,15))#, cex=2.5, pt.cex=c(3,3,3))
@@ -177,12 +189,12 @@ mtext(side=2, outer=T, text='Lake-wide surface temperature (deg C)', cex=1.25, l
 
 pdf(file=sprintf('%s/mon_diff.pdf', outdir), w=12, h=10)
 par(mar=c(4,10,4,1))
-lk_names <- str_to_title(gsub('_',' ',names(ctl)))
+lk_names <- str_to_title(gsub('_',' ',names(ctl_mon)))
 
-image.plot(x=dts, y=1:ncol(ctl), z=as.matrix(glo-ctl), col=hcl.colors(100,'Blue-Red 3') , xaxt='n', yaxt='n',
+image.plot(x=mons, y=1:ncol(ctl_mon), z=as.matrix(glo_mon-ctl_mon), col=hcl.colors(100,'Blue-Red 3') , xaxt='n', yaxt='n',
 		   main='Lake-wide Sfc Temp Difference (GLOBathy - Flatbottom)', ylab=NA, xlab=NA, legend.lab='degrees C')
 axis(2, at=1:ncol(ctl), lab=lk_names, las=2, cex.axis=1.5)
-axis.Date(1,at=dts, lab=substr(month.abb,1,1), line=0, lwd=1, cex.axis=1.25)
+axis.Date(1,at=mons, lab=substr(month.abb,1,1), line=0, lwd=1, cex.axis=1.25)
 dev.off()
 
 
@@ -194,9 +206,9 @@ dev.off()
 
 
 
-ctl_ice <- read.table('csv/ctl_ICE3D.csv', row.names=1)
-glo_ice <- read.table('csv/bi0m_ICE3D.csv', row.names=1)
-dts_ice <- as.Date(row.names(ctl_ice))
+ctl_ice <- read.table('csv/ctl_ice.csv', row.names=1, sep=',')
+glo_ice <- read.table('csv/glo_ice.csv', row.names=1, sep=',')
+dts_ice <- as.Date(row.names(ctl_ice), format='%Y%m%d')
 
 # clip no ice lakes (based on ctl runs)
 has_ice <- apply(ctl_ice, 2, max, na.rm=T)>0
@@ -213,7 +225,7 @@ glo_ice <- na.exclude(glo_ice)
 
 
 # plot suspect ice lakes
-if(F){
+if(T){
 	x11()
 	matplot(dts_ice, ctl_ice[,c('Sebago','Goose','Oneida')], 'l', ylim=c(0,1), lty=1, ylab='FLATBOTTOM ice cover', lwd=2)
 	legend('topright', legend=c('Sebago','Goose','Oneida'), text.col=1:3, cex=2)
@@ -227,10 +239,9 @@ if(F){
 glo_ice[glo_ice[,'Goose']==.05,'Goose'] <- 0
 ctl_ice[ctl_ice[,'Goose']==.12,'Goose'] <- 0
 
-#instead just entirely exclude sebago and goose
-selbadice <- grep('Oneida|Sebago', names(ctl_ice))
-glo_ice <- glo_ice[,-selbadice]
-ctl_ice <- ctl_ice[,-selbadice]
+
+
+
 
 
 # ICE DIFF PLOT
@@ -243,19 +254,9 @@ if(T){
 	axis(2, at=1:ncol(ctl_ice), lab=names(ctl_ice), las=2)
 	axis.Date(side=1, x=dts_ice, at=seq(dts_ice[1], rev(dts_ice)[1], by='month', format='%b'))
 }
+dev.off()
 
 
-thresh <- .9
-
-print('Winnipesaukee: Jan-14 Apr-24 ')
-#print('Sebago:    NA        Apr-18' ) # sebago was a bad lake
-for (lk in c('Winnipesaukee')){
-	ctl_dts <- range(dts_ice[ctl_ice[,lk] > thresh])
-	glo_dts <- range(dts_ice[glo_ice[,lk] > thresh])
-	cat(sprintf('flatbottom: %s %s \n', format(ctl_dts[1], '%b-%d'), format(ctl_dts[2], '%b-%d')))
-	cat(sprintf('GLOBathy: %s %s \n', format(glo_dts[1], '%b-%d'),format(ctl_dts[2], '%b-%d')))
-}
-
-
+graphics.off()
 
 
